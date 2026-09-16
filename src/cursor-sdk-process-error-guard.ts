@@ -1,5 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { classifyCursorConnectError, isCursorSdkAbortConnectError, isCursorSdkConnectionStalledError } from "./cursor-provider-errors.js";
+import { classifyCursorConnectError, isCursorSdkAbortConnectError, isCursorSdkAbortError, isCursorSdkConnectionStalledError } from "./cursor-provider-errors.js";
 
 interface CursorSdkProcessErrorGuardToken {
 	suppressAbortErrors: boolean;
@@ -54,23 +54,7 @@ function isCursorSdkWriteIterableClosedError(error: unknown): boolean {
 	);
 }
 
-// The Cursor SDK aborts an in-flight controlled-exec turn via its internal
-// `AbortController.abort()` (user interrupt or stall-detector cancellation),
-// which surfaces as a raw `DOMException [AbortError]` rather than a
-// `ConnectError`. `classifyCursorConnectError` returns undefined for it, so it
-// otherwise falls through the emit patch and terminates the process. A
-// DOMException is not `instanceof Error`, so match structurally on the
-// `AbortError` name plus the same `@cursor/sdk/dist` stack provenance the
-// WriteIterableClosedError recognizer uses, keeping unrelated AbortErrors fatal.
-function isCursorSdkAbortError(error: unknown): boolean {
-	if (typeof error !== "object" || error === null) return false;
-	const { name, stack } = error as { name?: unknown; stack?: unknown };
-	return (
-		name === "AbortError" &&
-		typeof stack === "string" &&
-		/(?:^|[\\/])node_modules[\\/]@cursor[\\/]sdk[\\/]dist[\\/]/.test(stack)
-	);
-}
+// isCursorSdkAbortError lives in cursor-provider-errors.ts (shared with sanitize).
 
 // The exact observed incident: the Cursor SDK 1.0.23 local shell executor writes a
 // spawned child's stdin without a stream 'error' listener, so a child exiting while

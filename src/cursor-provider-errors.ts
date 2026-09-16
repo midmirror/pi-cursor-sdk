@@ -46,6 +46,26 @@ export function isLikelyLocalSessionAuthError(message: string): boolean {
 	return /authentication error/i.test(message) && /log(?:ging)?\s+out|logged in/i.test(message);
 }
 
+/** Bare AbortError message from SDK AbortController / stall (not always a ConnectError). */
+export function isLikelyOperationAbortedMessage(message: string): boolean {
+	return /^(?:\[canceled\]\s*)?this operation was aborted\.?$/i.test(message.trim())
+		|| /^operation was aborted\.?$/i.test(message.trim());
+}
+
+/**
+ * Cursor SDK aborts in-flight work via AbortController; surfaces as DOMException/Error
+ * named AbortError with @cursor/sdk/dist stack — not a ConnectError.
+ */
+export function isCursorSdkAbortError(error: unknown): boolean {
+	if (typeof error !== "object" || error === null) return false;
+	const { name, stack } = error as { name?: unknown; stack?: unknown };
+	return (
+		name === "AbortError" &&
+		typeof stack === "string" &&
+		/(?:^|[\\/])node_modules[\\/]@cursor[\\/]sdk[\\/]dist[\\/]/.test(stack)
+	);
+}
+
 function getErrorStringField(record: Record<string, unknown> | undefined, key: string): string | undefined {
 	const value = record?.[key];
 	return typeof value === "string" ? value : undefined;
@@ -274,9 +294,10 @@ export function isUnauthenticatedConnectError(error: unknown): boolean {
 export function shouldResetLocalSessionAgentOnError(error: unknown, runtimeTarget?: CursorRuntime): boolean {
 	if (runtimeTarget === "cloud") return false;
 	if (isUnauthenticatedConnectError(error)) return true;
+	if (isCursorSdkAbortError(error)) return true;
 	const message =
 		error instanceof Error ? error.message : typeof error === "string" ? error : scrubSensitiveText(String(error ?? ""), undefined);
-	return isLikelyLocalSessionAuthError(message) || isLikelyAuthError(message);
+	return isLikelyLocalSessionAuthError(message) || isLikelyOperationAbortedMessage(message) || isLikelyAuthError(message);
 }
 
 function isLikelyNetworkTimeout(message: string): boolean {
@@ -390,7 +411,15 @@ export function sanitizeCursorProviderError(
 		if (isLikelyLocalSessionAuthError(scrubbed)) return LOCAL_SESSION_AUTH_CURSOR_SDK_ERROR_MESSAGE;
 		return AUTH_CURSOR_SDK_ERROR_MESSAGE;
 	}
-	if (connectClassification?.kind === "network" || isCursorSdkConnectionStalledError(error) || isLikelyNetworkTimeout(scrubbed)) return NETWORK_CURSOR_SDK_ERROR_MESSAGE;
+	if (
+		connectClassification?.kind === "network" ||
+		isCursorSdkConnectionStalledError(error) ||
+		isCursorSdkAbortError(error) ||
+		isLikelyOperationAbortedMessage(scrubbed) ||
+		isLikelyNetworkTimeout(scrubbed)
+	) {
+		return NETWORK_CURSOR_SDK_ERROR_MESSAGE;
+	}
 	if (isGenericCursorRunFailureMessage(scrubbed)) return RETRYABLE_CURSOR_RUN_FAILURE_PREFIX;
 	if (isGenericErrorMessage(scrubbed)) return GENERIC_CURSOR_SDK_ERROR_MESSAGE;
 	return scrubbed || GENERIC_CURSOR_SDK_ERROR_MESSAGE;

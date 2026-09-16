@@ -2,7 +2,7 @@
   "name": "pi-cursor-sdk",
   "version": "0.3.6",
   "description": "pi provider extension backed by @cursor/sdk local and cloud agents",
-  "author": "Mitch Fultz (https://github.com/fitchmultz)",
+  "author": "midmirror (https://github.com/midmirror)",
   "license": "MIT",
   "keywords": [
     "pi-package",
@@ -15,12 +15,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/fitchmultz/pi-cursor-sdk.git"
+    "url": "git+https://github.com/midmirror/pi-cursor-sdk.git"
   },
   "bugs": {
-    "url": "https://github.com/fitchmultz/pi-cursor-sdk/issues"
+    "url": "https://github.com/midmirror/pi-cursor-sdk/issues"
   },
-  "homepage": "https://github.com/fitchmultz/pi-cursor-sdk#readme",
+  "homepage": "https://github.com/midmirror/pi-cursor-sdk#readme",
   "files": [
     "dist",
     "shared",

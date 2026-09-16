@@ -5,9 +5,11 @@ import {
 	isCursorSdkConnectionStalledError,
 	formatCursorSdkAbortMessage,
 	formatCursorSdkRunFailureDetail,
+	isCursorSdkAbortError,
 	isUnauthenticatedConnectError,
 	resolveCursorSdkAbortCause,
 	sanitizeCursorProviderError,
+	shouldResetLocalSessionAgentOnError,
 } from "../src/cursor-provider-errors.js";
 
 function makeUnauthenticatedConnectError(): Error & { rawMessage: string; code: number; metadata: Headers } {
@@ -430,4 +432,18 @@ describe("cursor-provider-errors", () => {
 			"Cancelled: Cursor SDK live run ended before completion.",
 		);
 	});
+	it("maps bare AbortError / This operation was aborted to retryable network guidance", () => {
+		const abort = Object.assign(new DOMException("This operation was aborted", "AbortError"), {
+			stack:
+				"AbortError: This operation was aborted\n" +
+				"    at AbortController.abort (node:internal/abort_controller:1:1)\n" +
+				"    at file:///repo/node_modules/@cursor/sdk/dist/esm/357.js:1:75246",
+		});
+		expect(isCursorSdkAbortError(abort)).toBe(true);
+		expect(sanitizeCursorProviderError(abort, "test-key")).toContain("Network error");
+		expect(sanitizeCursorProviderError(abort, "test-key")).not.toContain("This operation was aborted");
+		expect(sanitizeCursorProviderError(new Error("This operation was aborted"), "test-key")).toContain("Network error");
+		expect(shouldResetLocalSessionAgentOnError(abort, "local")).toBe(true);
+	});
+
 });
