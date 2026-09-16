@@ -69,7 +69,7 @@ export function estimateCursorAssistantSessionOutputTokens(message: AssistantMes
 			if (block.type === "text") return block.text;
 			if (block.type === "thinking") return block.thinking;
 			if (block.type === "toolCall") {
-				return `Tool call (${block.name}, call ${block.id}): ${stringifyUsageValue(block.arguments)}`;
+				return `[prior-tool name=${block.name} id=${block.id}] ${stringifyUsageValue(block.arguments)}`;
 			}
 			return "";
 		})

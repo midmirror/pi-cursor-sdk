@@ -139,7 +139,7 @@ describe("buildCursorPrompt", () => {
 			],
 		};
 		const result = buildCursorPrompt(ctx);
-		expect(result.text).toContain("Tool result (bash, call tc1): output here");
+		expect(result.text).toContain("[prior-tool-result name=bash id=tc1] output here");
 	});
 
 	it("formats tool errors", () => {
@@ -157,7 +157,7 @@ describe("buildCursorPrompt", () => {
 			],
 		};
 		const result = buildCursorPrompt(ctx);
-		expect(result.text).toContain("Tool error (bash, call tc1): command failed");
+		expect(result.text).toContain("[prior-tool-error name=bash id=tc1] command failed");
 	});
 
 	it("preserves real pi edit and write tool names in Cursor prompt labels", () => {
@@ -198,14 +198,14 @@ describe("buildCursorPrompt", () => {
 
 		const result = buildCursorPrompt(ctx);
 
-		expect(result.text).toContain('Tool call (edit, call edit-call): {"path":"src/a.ts"}');
-		expect(result.text).toContain('Tool call (write, call write-call): {"path":"src/b.ts"}');
-		expect(result.text).toContain("Tool result (edit, call edit-call): edit ok");
-		expect(result.text).toContain("Tool result (write, call write-call): write ok");
-		expect(result.text).not.toContain("Tool call (Cursor edit");
-		expect(result.text).not.toContain("Tool call (Cursor write");
-		expect(result.text).not.toContain("Tool result (Cursor edit");
-		expect(result.text).not.toContain("Tool result (Cursor write");
+		expect(result.text).toContain('[prior-tool name=edit id=edit-call] {"path":"src/a.ts"}');
+		expect(result.text).toContain('[prior-tool name=write id=write-call] {"path":"src/b.ts"}');
+		expect(result.text).toContain("[prior-tool-result name=edit id=edit-call] edit ok");
+		expect(result.text).toContain("[prior-tool-result name=write id=write-call] write ok");
+		expect(result.text).not.toContain("[prior-tool name=Cursor edit");
+		expect(result.text).not.toContain("[prior-tool name=Cursor write");
+		expect(result.text).not.toContain("[prior-tool-result name=Cursor edit");
+		expect(result.text).not.toContain("[prior-tool-result name=Cursor write");
 	});
 
 	it("labels canonical neutral Cursor replay activity without rewriting literal transcript text", () => {
@@ -245,10 +245,10 @@ describe("buildCursorPrompt", () => {
 
 		expect(result.text).toContain("User: Please search for the literal string replay_marker.");
 		expect(result.text).toContain("Assistant: I will preserve literal activity_marker text.");
-		expect(result.text).toContain("Tool call (Cursor activity, call activity-call)");
+		expect(result.text).toContain("[prior-tool name=Cursor activity id=activity-call]");
 		expect(result.text).toContain('{"activityTitle":"Cursor MCP","note":"result_marker"}');
-		expect(result.text).toContain('Tool call (bash, call bash-call): {"command":"echo mcp_marker"}');
-		expect(result.text).toContain("Tool result (Cursor activity, call activity-call): recorded replay_marker result");
+		expect(result.text).toContain('[prior-tool name=bash id=bash-call] {"command":"echo mcp_marker"}');
+		expect(result.text).toContain("[prior-tool-result name=Cursor activity id=activity-call] recorded replay_marker result");
 	});
 
 	it("estimates assistant prompt-message tokens from replayed text and tool calls but not thinking", () => {
@@ -267,7 +267,7 @@ describe("buildCursorPrompt", () => {
 			timestamp: 2,
 		} satisfies AssistantMessage;
 
-		const expected = 'Assistant: I will inspect the directory.\nTool call (bash, call tc1): {"command":"ls"}';
+		const expected = 'Assistant: I will inspect the directory.\n[prior-tool name=bash id=tc1] {"command":"ls"}';
 		expect(estimateCursorPromptMessageTokens(assistant, { charsPerToken: 1 })).toBe(expected.length);
 		expect(expected).not.toContain("hidden reasoning");
 	});
@@ -282,7 +282,7 @@ describe("buildCursorPrompt", () => {
 			timestamp: 3,
 		} satisfies ToolResultMessage;
 
-		expect(estimateCursorPromptMessageTokens(toolResult, { charsPerToken: 1 })).toBe("Tool result (bash, call tc1): README.md".length);
+		expect(estimateCursorPromptMessageTokens(toolResult, { charsPerToken: 1 })).toBe("[prior-tool-result name=bash id=tc1] README.md".length);
 	});
 
 	it("estimates tool-result image prompt content as the replay placeholder text", () => {
@@ -296,7 +296,7 @@ describe("buildCursorPrompt", () => {
 		} satisfies ToolResultMessage;
 
 		expect(estimateCursorPromptMessageTokens(toolResult, { charsPerToken: 1 })).toBe(
-			"Tool result (read_image, call tc1): [image omitted from transcript]".length,
+			"[prior-tool-result name=read_image id=tc1] [image omitted from transcript]".length,
 		);
 	});
 
@@ -350,8 +350,8 @@ describe("buildCursorPrompt", () => {
 			],
 		};
 		const result = buildCursorPrompt(ctx);
-		expect(result.text).toContain("Assistant: I will inspect the directory.\nTool call (bash, call tc1): {\"command\":\"ls\"}");
-		expect(result.text).toContain("Tool result (bash, call tc1): README.md");
+		expect(result.text).toContain("Assistant: I will inspect the directory.\n[prior-tool name=bash id=tc1] {\"command\":\"ls\"}");
+		expect(result.text).toContain("[prior-tool-result name=bash id=tc1] README.md");
 	});
 
 	it("extracts images from latest user message only", () => {
@@ -459,7 +459,7 @@ describe("buildCursorPrompt", () => {
 
 		expect(result.text).toContain("User: latest request");
 		expect(result.text).toContain("User: recent request");
-		expect(result.text).toContain("Tool result (bash, call tc1): recent tool output");
+		expect(result.text).toContain("[prior-tool-result name=bash id=tc1] recent tool output");
 		expect(result.text).not.toContain("old request");
 	});
 

@@ -49,6 +49,7 @@ export function getCursorToolTailGuardText(
 			: getCursorPlanModeToolGuidanceText(options.agentMode, { includePiBridgeGuidance: options.includePiBridgeGuidance }),
 		"Exact-output requests: output exactly the requested text; no preamble or checks unless asked.",
 		"Tools: call available Cursor SDK/MCP tools; never print tool cards as assistant text.",
+		"Never print tool cards, tool-call transcripts, or simulated tool invocations as assistant text — always invoke real Cursor SDK/MCP tools.",
 		options.includePiBridgeGuidance === false ? undefined : CURSOR_PI_BRIDGE_PREFERENCE_TEXT,
 	].filter((line): line is string => line !== undefined).join("\n");
 }
@@ -132,7 +133,18 @@ function formatContentBlocks(content: string | { type: string; text?: string; da
 
 function formatToolCall(toolCall: ToolCall): string {
 	const args = JSON.stringify(toolCall.arguments) ?? "";
-	return `Tool call (${getCursorReplayPromptLabel(toolCall.name)}, call ${toolCall.id}): ${args}`;
+	// Use [prior-tool …] — "Tool call (" is mimicked by Cursor models as plain text (#257 / #40).
+	return `[prior-tool name=${getCursorReplayPromptLabel(toolCall.name)} id=${toolCall.id}] ${args}`;
+}
+
+/** Drop assistant-narrated tool cards so they cannot re-contaminate the next prompt. */
+function scrubNarratedToolCallLines(text: string): string {
+	const scrubbed = text
+		.replace(/^[ \t]*(?:[-*+]|\d+[.)])?[ \t]*Tool\s+call\s*:\s*\S+[^\n]*$/gim, "")
+		.replace(/^[ \t]*Tool\s+call\s*\([^)\n]*\)[^\n]*$/gim, "")
+		.replace(/\n{3,}/g, "\n\n")
+		.trim();
+	return scrubbed;
 }
 
 function sanitizeSystemPromptForCursor(systemPrompt: string): string {
@@ -162,7 +174,8 @@ function formatMessage(msg: Message): string | undefined {
 			const textParts: string[] = [];
 			for (const block of blocks) {
 				if (isTextBlock(block)) {
-					textParts.push(block.text);
+					const scrubbed = scrubNarratedToolCallLines(block.text);
+					if (scrubbed) textParts.push(scrubbed);
 				} else if (isToolCallBlock(block)) {
 					textParts.push(formatToolCall(block));
 				}
@@ -172,8 +185,8 @@ function formatMessage(msg: Message): string | undefined {
 		}
 		case "toolResult": {
 			const text = formatContentBlocks(msg.content);
-			const label = msg.isError ? "Tool error" : "Tool result";
-			return `${label} (${getCursorReplayPromptLabel(msg.toolName)}, call ${msg.toolCallId}): ${text}`;
+			const kind = msg.isError ? "prior-tool-error" : "prior-tool-result";
+			return `[${kind} name=${getCursorReplayPromptLabel(msg.toolName)} id=${msg.toolCallId}] ${text}`;
 		}
 	}
 }

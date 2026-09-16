@@ -9,6 +9,7 @@ import {
 	formatCursorSdkAbortMessage,
 	resolveCursorSdkAbortCause,
 	sanitizeCursorProviderError,
+	shouldResetLocalSessionAgentOnError,
 } from "./cursor-provider-errors.js";
 import type { CursorRuntime } from "./cursor-config.js";
 import { CursorLiveRunAbortError } from "./cursor-live-run-coordinator.js";
@@ -30,6 +31,8 @@ import type {
 import { applyCursorUsage } from "./cursor-usage-accounting.js";
 import { hasUsableText } from "./cursor-record-utils.js";
 import { emitDisplayOnlyTraceBlock } from "./cursor-display-only-trace.js";
+import { invalidateSessionAgent } from "./cursor-session-agent.js";
+import { getCursorSessionScopeKey } from "./cursor-session-scope.js";
 export type CursorTurnTerminalEvent =
 	| {
 			kind: "direct";
@@ -111,6 +114,7 @@ export class CursorRunFinalizer {
 			})
 			.catch((error: unknown) => {
 				this.safeCleanup(() => discardIncompleteTools({ status: "error" }));
+				this.maybeResetLocalPoolOnAuth(error, "local");
 				if (!liveRun.disposed) {
 					cursorLiveRuns.markError(
 						liveRun,
@@ -175,6 +179,10 @@ export class CursorRunFinalizer {
 				this.pushTerminalError(partial, "aborted", getCursorRunAbortMessage(outcome));
 				break;
 			case "failed":
+				this.maybeResetLocalPoolOnAuth(
+					outcome.kind === "error" ? outcome.errorMessage : "Cursor SDK run failed.",
+					prepared.runtimeTarget,
+				);
 				await prepared.lifecycle.abandon();
 				this.pushTerminalError(partial, "error", outcome.kind === "error" ? outcome.errorMessage : "Cursor SDK run failed.");
 				break;
@@ -213,16 +221,23 @@ export class CursorRunFinalizer {
 			this.params.sdkProcessErrorGuard.suppressAbortErrors();
 			this.pushTerminalError(this.params.runnerParams.partial, "aborted", this.abortMessage());
 		} else {
+			const runtime = prepared?.runtimeTarget ?? this.params.runtimeTarget();
+			this.maybeResetLocalPoolOnAuth(error, runtime);
 			this.pushTerminalError(
 				this.params.runnerParams.partial,
 				"error",
 				sanitizeCursorProviderError(
 					error,
 					this.params.resolvedApiKey() ?? this.params.runnerParams.options?.apiKey,
-					prepared?.runtimeTarget ?? this.params.runtimeTarget(),
+					runtime,
 				),
 			);
 		}
+	}
+
+	private maybeResetLocalPoolOnAuth(error: unknown, runtimeTarget?: CursorRuntime): void {
+		if (!shouldResetLocalSessionAgentOnError(error, runtimeTarget)) return;
+		this.safeCleanup(() => invalidateSessionAgent(getCursorSessionScopeKey()));
 	}
 
 	private pushTerminalError(partial: AssistantMessage, reason: "error" | "aborted", message: string): void {

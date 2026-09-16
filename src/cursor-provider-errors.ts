@@ -9,6 +9,9 @@ const GENERIC_CURSOR_SDK_ERROR_MESSAGE =
 	"Cursor SDK request failed. The Cursor SDK API key may be missing, invalid, or unauthorized. Cursor Agent CLI/Desktop login is not reused. Run /login -> Use an API key -> Cursor, verify CURSOR_API_KEY, or pass --api-key, then retry.";
 const AUTH_CURSOR_SDK_ERROR_MESSAGE =
 	"Cursor SDK request failed because the Cursor SDK API key may be invalid or unauthorized. Cursor Agent CLI/Desktop login is not reused. Run /login -> Use an API key -> Cursor, verify CURSOR_API_KEY, or pass --api-key, then retry.";
+/** Local pooled-agent session auth (idle expiry) — not a dead API key. */
+export const LOCAL_SESSION_AUTH_CURSOR_SDK_ERROR_MESSAGE =
+	"Cursor local agent session authentication expired or was invalidated (common after long idle). The pooled agent was reset; retry the prompt. /reload also works. Do not /login unless CURSOR_API_KEY is actually invalid.";
 const CLOUD_AUTH_CURSOR_SDK_ERROR_MESSAGE =
 	"Cursor Cloud Agents request failed because Cloud API authentication rejected the API key. Use a user API key from Cursor Dashboard -> API Keys or a service account API key from Team settings; Team Admin API keys are not supported as Cursor Cloud Agents credentials. Configure the key with /login -> Use an API key -> Cursor, CURSOR_API_KEY, or --api-key, then retry.";
 // Keep "Network error" aligned with pi's agent-level retry classifier.
@@ -36,6 +39,11 @@ function isKnownGenericRunFailureText(message: string): boolean {
 
 function isLikelyAuthError(message: string): boolean {
 	return /\b(unauthenticated|unauthorized|unauthorised|forbidden|invalid api key|invalid key|authentication|auth|401|403)\b/i.test(message);
+}
+
+/** SDK session-auth wording seen after long-idle pooled local agents (issue #247). */
+export function isLikelyLocalSessionAuthError(message: string): boolean {
+	return /authentication error/i.test(message) && /log(?:ging)?\s+out|logged in/i.test(message);
 }
 
 function getErrorStringField(record: Record<string, unknown> | undefined, key: string): string | undefined {
@@ -262,6 +270,15 @@ export function isUnauthenticatedConnectError(error: unknown): boolean {
 	return classifyCursorConnectError(error)?.kind === "unauthenticated";
 }
 
+/** True when local runtime should dispose/recreate the pooled agent after this failure. */
+export function shouldResetLocalSessionAgentOnError(error: unknown, runtimeTarget?: CursorRuntime): boolean {
+	if (runtimeTarget === "cloud") return false;
+	if (isUnauthenticatedConnectError(error)) return true;
+	const message =
+		error instanceof Error ? error.message : typeof error === "string" ? error : scrubSensitiveText(String(error ?? ""), undefined);
+	return isLikelyLocalSessionAuthError(message) || isLikelyAuthError(message);
+}
+
 function isLikelyNetworkTimeout(message: string): boolean {
 	return (
 		/\b(ETIMEDOUT|ECONNRESET|ECONNREFUSED|ENETUNREACH|EAI_AGAIN|NGHTTP2_ENHANCE_YOUR_CALM|ERR_HTTP2_STREAM_ERROR|ERR_HTTP2_SESSION_ERROR)\b/i.test(
@@ -368,7 +385,10 @@ export function sanitizeCursorProviderError(
 		connectClassification?.kind === "unauthenticated" ||
 		isLikelyAuthError(scrubbed)
 	) {
-		return runtimeTarget === "cloud" ? CLOUD_AUTH_CURSOR_SDK_ERROR_MESSAGE : AUTH_CURSOR_SDK_ERROR_MESSAGE;
+		if (runtimeTarget === "cloud") return CLOUD_AUTH_CURSOR_SDK_ERROR_MESSAGE;
+		// Prefer session-auth guidance when SDK wording matches idle pooled-agent expiry.
+		if (isLikelyLocalSessionAuthError(scrubbed)) return LOCAL_SESSION_AUTH_CURSOR_SDK_ERROR_MESSAGE;
+		return AUTH_CURSOR_SDK_ERROR_MESSAGE;
 	}
 	if (connectClassification?.kind === "network" || isCursorSdkConnectionStalledError(error) || isLikelyNetworkTimeout(scrubbed)) return NETWORK_CURSOR_SDK_ERROR_MESSAGE;
 	if (isGenericCursorRunFailureMessage(scrubbed)) return RETRYABLE_CURSOR_RUN_FAILURE_PREFIX;

@@ -226,6 +226,15 @@ describe("cursor-provider-errors", () => {
 		expect(sanitizeCursorProviderError(new Error("Bearer secret-key"), "secret-key")).not.toContain("secret-key");
 	});
 
+	it("maps idle pooled-agent session auth wording to reload guidance, not /login", () => {
+		const raw = "Authentication error If you are logged in, try logging out and back in.";
+		const message = sanitizeCursorProviderError(new Error(raw), "test-key", "local");
+		expect(message).toContain("session authentication expired");
+		expect(message).toContain("/reload");
+		expect(message).toContain("Do not /login");
+		expect(message).not.toContain("Run /login -> Use an API key");
+	});
+
 	it("uses the installed AuthenticationError class only for cloud guidance", () => {
 		const error = new AuthenticationError("Invalid User API Key at https://alice:pw@api.cursor.com");
 		const localMessage = "Invalid User API Key at https://[redacted]@api.cursor.com";
